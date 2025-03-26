@@ -157,7 +157,7 @@ int GPSDriverSBF::configure(unsigned &baudrate, const GPSConfig &config)
 
 	// Disable previous output for now so we can detect the COM port
 	for (int i = 1; i <= 2; i++) {
-		snprintf(msg, sizeof(msg), SBF_CONFIG_DISABLE_OUTPUT, "COM", i);>
+		snprintf(msg, sizeof(msg), SBF_CONFIG_DISABLE_OUTPUT, "COM", i);
 		sendMessageAndWaitForAck(msg, SBF_CONFIG_TIMEOUT);
 	}
 
