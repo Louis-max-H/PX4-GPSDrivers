@@ -80,7 +80,7 @@ bool GPSDriverSBF::detectSerialPort(char* const port_name) {
 	// Read buffer to get the COM port
 	char buf[GPS_READ_BUFFER_SIZE];
 	size_t buffer_offset = 0;   // The offset into the string where the next data should be read to.
-	hrt_abstime timeout_time = hrt_absolute_time() + 5 * 1000 * 200;
+	gps_abstime timeout_time = gps_absolute_time() + 5 * 1000 * 200;
 	bool response_detected = false;
 
 	// Receiver prints prompt after a message.
@@ -131,7 +131,7 @@ bool GPSDriverSBF::detectSerialPort(char* const port_name) {
 			}
 			buffer_offset = 3;
 		}
-	} while (timeout_time > hrt_absolute_time());
+	} while (timeout_time > gps_absolute_time());
 
 	if (response_detected) {
 		SBF_INFO("Serial port found: %s", port_name);
