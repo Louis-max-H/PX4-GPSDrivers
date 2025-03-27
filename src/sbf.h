@@ -371,9 +371,9 @@ public:
 	 *
 	 * @param port_name A string with a length of 5 to store the result
 	 *
-	 * @return `PX4_OK` on success, `PX4_ERROR` on error
+	 * @return true on success, false on error
 	*/
-	int detectSerialPort(char *const port_name);
+	bool detectSerialPort(char *const port_name);
 
 	int configure(unsigned &baudrate, const GPSConfig &config) override;
 

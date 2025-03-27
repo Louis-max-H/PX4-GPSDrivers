@@ -76,7 +76,7 @@ GPSDriverSBF::~GPSDriverSBF()
 	delete _rtcm_parsing;
 }
 
-int GPSDriverSBF::detectSerialPort(char* const port_name) {
+bool GPSDriverSBF::detectSerialPort(char* const port_name) {
 	// Read buffer to get the COM port
 	char buf[GPS_READ_BUFFER_SIZE];
 	size_t buffer_offset = 0;   // The offset into the string where the next data should be read to.
@@ -85,7 +85,7 @@ int GPSDriverSBF::detectSerialPort(char* const port_name) {
 
 	// Receiver prints prompt after a message.
 	if (!sendMessage("gecm\n")) {
-		return PX4_ERROR;
+		return false;
 	}
 
 	do {
@@ -94,7 +94,7 @@ int GPSDriverSBF::detectSerialPort(char* const port_name) {
 
 		if (read_result < 0) {
 			SBF_WARN("SBF read error");
-			return PX4_ERROR;
+			return false;
 		}
 
 		// Sanitize the data so it doesn't contain any `0` values.
@@ -133,13 +133,12 @@ int GPSDriverSBF::detectSerialPort(char* const port_name) {
 		}
 	} while (timeout_time > hrt_absolute_time());
 
-	if (!response_detected) {
-		SBF_WARN("No valid serial port detected");
-		return PX4_ERROR;
-	} else {
+	if (response_detected) {
 		SBF_INFO("Serial port found: %s", port_name);
-		return PX4_OK;
+	} else {
+		SBF_WARN("No valid serial port detected");
 	}
+	return response_detected;
 }
 
 int GPSDriverSBF::configure(unsigned &baudrate, const GPSConfig &config)
@@ -168,7 +167,7 @@ int GPSDriverSBF::configure(unsigned &baudrate, const GPSConfig &config)
 
 	char com_port[5] {};
 
-	if(detectSerialPort(com_port) == PX4_ERROR){
+	if(!detectSerialPort(com_port)){
 		return -1;
 	}
 
