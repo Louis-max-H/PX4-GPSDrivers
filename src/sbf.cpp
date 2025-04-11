@@ -282,6 +282,7 @@ int GPSDriverSBF::configure(unsigned &baudrate, const GPSConfig &config)
 			sendMessageAndWaitForAck(msg, SBF_CONFIG_TIMEOUT);
 			
 			sendMessageAndWaitForAck(SBF_CONFIG_RTCM_STATIC1, SBF_CONFIG_TIMEOUT);
+			sendMessageAndWaitForAck(SBF_CONFIG_RTCM_STATIC2, SBF_CONFIG_TIMEOUT);
 			break;
 
 		case(BaseSettingsType::survey_in):
@@ -303,7 +304,7 @@ int GPSDriverSBF::configure(unsigned &baudrate, const GPSConfig &config)
 bool GPSDriverSBF::sendMessage(const char *msg)
 {
 	// Send message
-	SBF_DEBUG("Hui Send MSG: %s", msg);
+	SBF_DEBUG("Send MSG: %s", msg);
 	int length = static_cast<int>(strlen(msg));
 
 	return (write(msg, length) == length);
@@ -311,7 +312,7 @@ bool GPSDriverSBF::sendMessage(const char *msg)
 
 bool GPSDriverSBF::sendMessageAndWaitForAck(const char *msg, const int timeout)
 {
-	SBF_INFO("Hui Send MSG: %s", msg);
+	SBF_INFO("Send MSG: %s", msg);
 
 	// Send message
 	int length = static_cast<int>(strlen(msg));
