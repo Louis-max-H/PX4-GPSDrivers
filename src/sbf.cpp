@@ -61,7 +61,7 @@
 
 /**** Warning macros, disable to save memory */
 #define SBF_WARN(...)        {GPS_WARN(__VA_ARGS__);}
-#define SBF_DEBUG(...)       {/*GPS_WARN(__VA_ARGS__);*/}
+#define SBF_DEBUG(...)       {GPS_WARN(__VA_ARGS__);}
 
 GPSDriverSBF::GPSDriverSBF(GPSCallbackPtr callback, void *callback_user, struct sensor_gps_s *gps_position,
 			   satellite_info_s *satellite_info, float heading_offset, float pitch_offset)
@@ -76,9 +76,73 @@ GPSDriverSBF::~GPSDriverSBF()
 	delete _rtcm_parsing;
 }
 
+bool GPSDriverSBF::detectSerialPort(char* const port_name) {
+	// Read buffer to get the COM port
+	char buf[GPS_READ_BUFFER_SIZE];
+	size_t buffer_offset = 0;   // The offset into the string where the next data should be read to.
+	gps_abstime timeout_time = gps_absolute_time() + 5 * 1000 * 200;
+	bool response_detected = false;
+
+	// Receiver prints prompt after a message.
+	if (!sendMessage("gecm\n")) {
+		return false;
+	}
+
+	do {
+		// Read at most the amount of available bytes in the buffer after the current offset, -1 because we need '\0' at the end for a valid string.
+		int read_result = read(reinterpret_cast<uint8_t *>(buf) + buffer_offset, sizeof(buf) - buffer_offset - 1, 200);
+
+		if (read_result < 0) {
+			SBF_WARN("SBF read error");
+			return false;
+		}
+
+		// Sanitize the data so it doesn't contain any `0` values.
+		for (size_t i = buffer_offset; i < buffer_offset + read_result; i++) {
+			if (buf[i] == 0) {
+				buf[i] = 1;
+			}
+		}
+
+		buffer_offset += read_result;
+
+		// Make sure the current buffer is a valid string.
+		buf[buffer_offset] = '\0';
+
+		char* port_name_address = strstr(buf, ">");
+
+		// Check if we found a port candidate.
+		if (buffer_offset > 4 && port_name_address != nullptr) {
+			size_t port_name_offset = reinterpret_cast<size_t>(port_name_address) - reinterpret_cast<size_t>(buf) - 4;
+			for (size_t i = 0; i < 4; i++) {
+				port_name[i] = buf[port_name_offset + i];
+			}
+			// NOTE: This limits the ports to serial and USB ports only. Otherwise the detection doesn't work correctly.
+			if (strstr(port_name, "COM") != nullptr || strstr(port_name, "USB") != nullptr) {
+				response_detected = true;
+				break;
+			}
+		}
+
+		if (buffer_offset + 1 >= sizeof(buf)) {
+			// Copy the last 3 bytes such that a half port isn't lost.
+			for (int i = 0; i < 4; i++) {
+				buf[i] = buf[sizeof(buf) - 4 + i];
+			}
+			buffer_offset = 3;
+		}
+	} while (timeout_time > gps_absolute_time());
+
+	if (response_detected) {
+		SBF_INFO("Serial port found: %s", port_name);
+	} else {
+		SBF_WARN("No valid serial port detected");
+	}
+	return response_detected;
+}
+
 int GPSDriverSBF::configure(unsigned &baudrate, const GPSConfig &config)
 {
-	char buf[GPS_READ_BUFFER_SIZE];
 	char msg[MSG_SIZE];
 
 	_configured = false;
@@ -102,47 +166,8 @@ int GPSDriverSBF::configure(unsigned &baudrate, const GPSConfig &config)
 	}
 
 	char com_port[5] {};
-	size_t offset = 1;
-	bool response_detected = false;
-	gps_abstime time_started = gps_absolute_time();
-	sendMessage("\n\r");
 
-	// Read buffer to get the COM port
-	do {
-		--offset; // overwrite the null-char
-		int ret = read(reinterpret_cast<uint8_t *>(buf) + offset, sizeof(buf) - offset - 1, SBF_CONFIG_TIMEOUT);
-
-		if (ret < 0) {
-			// something went wrong when reading
-			SBF_WARN("sbf read err");
-			return ret;
-		}
-
-		offset += ret;
-		buf[offset++] = '\0';
-
-		char *p = strstr(buf, ">");
-
-		if (p) { //check if the length of the com port == 4 and contains a > sign
-			for (int i = 0; i < 4; i++) {
-				com_port[i] = buf[i];
-			}
-
-			response_detected = true;
-		}
-
-		if (offset >= sizeof(buf)) {
-			offset = 1;
-		}
-
-	} while (time_started + 1000 * SBF_CONFIG_TIMEOUT > gps_absolute_time() && !response_detected);
-
-	if (response_detected) {
-		SBF_INFO("Septentrio GNSS receiver COM port: %s", com_port);
-		response_detected = false; // for future use
-
-	} else {
-		SBF_WARN("No COM port detected")
+	if(!detectSerialPort(com_port)){
 		return -1;
 	}
 
@@ -181,6 +206,7 @@ int GPSDriverSBF::configure(unsigned &baudrate, const GPSConfig &config)
 
 		if (!sendMessageAndWaitForAck(msg, SBF_CONFIG_TIMEOUT)) {
 			return -1;
+		
 		}
 
 		if (_dynamic_model < 6) {
@@ -204,6 +230,7 @@ int GPSDriverSBF::configure(unsigned &baudrate, const GPSConfig &config)
 	}
 
 	int i = 0;
+	bool response_detected = false;
 
 	do {
 		++i;
@@ -226,31 +253,57 @@ int GPSDriverSBF::configure(unsigned &baudrate, const GPSConfig &config)
 		_rtcm_parsing->reset();
 	}
 
+	SBF_DEBUG("Configure for protocol: %d", _base_settings.protocol);
+	switch(_base_settings.protocol){
+		case 2:
+			sendMessageAndWaitForAck(SBF_CONFIG_OUTPUT_CMR, SBF_CONFIG_TIMEOUT);
+			break;
+
+		case 1:
+			sendMessageAndWaitForAck(SBF_CONFIG_OUTPUT_RTCM2, SBF_CONFIG_TIMEOUT);
+			break;
+		
+		case 0:
+		default:
+			sendMessageAndWaitForAck(SBF_CONFIG_OUTPUT_RTCM3, SBF_CONFIG_TIMEOUT);
+			break;
+	}
+	
 	if (_output_mode == OutputMode::RTCM) {
-		if (_base_settings.type == BaseSettingsType::fixed_position) {
+		switch(_base_settings.type){
+		case(BaseSettingsType::fixed_position):
 			snprintf(msg, sizeof(msg), SBF_CONFIG_RTCM_STATIC_COORDINATES,
-				 _base_settings.settings.fixed_position.latitude,
-				 _base_settings.settings.fixed_position.longitude,
-				 static_cast<double>(_base_settings.settings.fixed_position.altitude));
+				_base_settings.settings.fixed_position.latitude,
+				_base_settings.settings.fixed_position.longitude,
+				static_cast<double>(_base_settings.settings.fixed_position.altitude));
 			sendMessageAndWaitForAck(msg, SBF_CONFIG_TIMEOUT);
+			
 			snprintf(msg, sizeof(msg), SBF_CONFIG_RTCM_STATIC_OFFSET, 0.0, 0.0, 0.0);
 			sendMessageAndWaitForAck(msg, SBF_CONFIG_TIMEOUT);
+			
 			sendMessageAndWaitForAck(SBF_CONFIG_RTCM_STATIC1, SBF_CONFIG_TIMEOUT);
-			sendMessageAndWaitForAck(SBF_CONFIG_RTCM_STATIC2, SBF_CONFIG_TIMEOUT);
+			break;
 
-		} else {
-			sendMessageAndWaitForAck(SBF_CONFIG_RTCM, SBF_CONFIG_TIMEOUT);
+		case(BaseSettingsType::survey_in):
+		default:
+			sendMessageAndWaitForAck(SBF_CONFIG_RTCM_SURVEY_IN, SBF_CONFIG_TIMEOUT);
+			break;
 		}
+	
+		sendMessageAndWaitForAck(SBF_CONFIG_RTCM_STATUS, SBF_CONFIG_TIMEOUT);	
+		_survey_active = true;
+		_survey_activation_date = gps_absolute_time();
 	}
 
 	_configured = true;
 	return 0;
 }
 
+
 bool GPSDriverSBF::sendMessage(const char *msg)
 {
 	// Send message
-	SBF_DEBUG("Send MSG: %s", msg);
+	SBF_DEBUG("Hui Send MSG: %s", msg);
 	int length = static_cast<int>(strlen(msg));
 
 	return (write(msg, length) == length);
@@ -258,13 +311,14 @@ bool GPSDriverSBF::sendMessage(const char *msg)
 
 bool GPSDriverSBF::sendMessageAndWaitForAck(const char *msg, const int timeout)
 {
-	SBF_DEBUG("Send MSG: %s", msg);
+	SBF_INFO("Hui Send MSG: %s", msg);
 
 	// Send message
 	int length = static_cast<int>(strlen(msg));
 
 	if (write(msg, length) != length) {
 		return false;
+	
 	}
 
 	// Wait for acknowledge
@@ -344,12 +398,13 @@ int GPSDriverSBF::receive(unsigned timeout)
 		}
 
 		if (handled > 0) {
+			SBF_INFO("Handled : %i", handled);
 			return handled;
 		}
 
 		// abort after timeout if no useful packets received
 		if (time_started + timeout * 1000 < gps_absolute_time()) {
-			SBF_DEBUG("timed out, returning");
+			SBF_DEBUG("timed out after %d ms, returning", timeout);
 			return -1;
 		}
 	}
@@ -599,6 +654,21 @@ int GPSDriverSBF::payloadRxDone()
 		_rate_count_vel++;
 		_rate_count_lat_lon++;
 		ret |= (_msg_status == 7) ? 1 : 0;
+
+
+		// In RTCM mode, PVTGeodetic is used to get base station survey-in
+		if(_output_mode == OutputMode::RTCM){
+			SurveyInStatus status{};
+			status.latitude = _gps_position->latitude_deg;
+			status.longitude = _gps_position->longitude_deg;
+			status.altitude = _gps_position->altitude_ellipsoid_m; // Todo: Need check if this value use the WGS84 format.
+			status.duration = _survey_active ? (float)(gps_absolute_time() - _survey_activation_date) / 1000000.0f : 0;
+			status.mean_accuracy = (_buf.payload_pvt_geodetic.h_accuracy + _buf.payload_pvt_geodetic.v_accuracy) / 20; // Todos: formula need approval, 0.01m
+			status.flags = (_buf.payload_pvt_geodetic.mode_type > 0 ? 1 : 0) | (_survey_active & 1) << 1; 
+			surveyInStatus(status);
+			qDebug() << "Sending survey";
+		}
+
 		//SBF_DEBUG("PVTGeodetic handled");
 		break;
 
@@ -682,6 +752,7 @@ int GPSDriverSBF::payloadRxDone()
 		break;
 
 	default:
+		qDebug() << "Unmatched SBF msg id " << _buf.msg_id;
 		break;
 	}
 
