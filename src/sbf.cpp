@@ -57,11 +57,11 @@
 /**** Trace macros, disable for production builds */
 #define SBF_TRACE_PARSER(...)   {/*GPS_INFO(__VA_ARGS__);*/}    /* decoding progress in parse_char() */
 #define SBF_TRACE_RXMSG(...)    {/*GPS_INFO(__VA_ARGS__);*/}    /* Rx msgs in payload_rx_done() */
-#define SBF_INFO(...)           {/*GPS_INFO(__VA_ARGS__);*/}
+#define SBF_INFO(...)           {GPS_INFO(__VA_ARGS__);}
 
 /**** Warning macros, disable to save memory */
 #define SBF_WARN(...)        {GPS_WARN(__VA_ARGS__);}
-#define SBF_DEBUG(...)       {/*GPS_WARN(__VA_ARGS__);*/}
+#define SBF_DEBUG(...)       {GPS_WARN(__VA_ARGS__);}
 
 GPSDriverSBF::GPSDriverSBF(GPSCallbackPtr callback, void *callback_user, struct sensor_gps_s *gps_position,
 			   satellite_info_s *satellite_info, float heading_offset, float pitch_offset)
@@ -334,7 +334,7 @@ bool GPSDriverSBF::sendMessageAndWaitForAck(const char *msg, const int timeout)
 // 0b0000_0000 = no message handled (not set up yet)
 // 0b0000_0001 = message handled
 // 0b0000_0010 = sat info message handled
-// 0b0000_0100 = RTCM handled
+// 0b0000_0100 = base station update (RTCM message or base station position)
 int GPSDriverSBF::receive(unsigned timeout)
 {
 	int handled = 0;
@@ -386,7 +386,7 @@ int GPSDriverSBF::receive(unsigned timeout)
 // 0b0000_0000 = still decoding
 // 0b0000_0001 = message handled
 // 0b0000_0010 = sat info message handled
-// 0b0000_0100 = RTCM handled
+// 0b0000_0100 = base station update
 int GPSDriverSBF::parseChar(const uint8_t b)
 {
 	int ret = 0;
@@ -639,6 +639,7 @@ int GPSDriverSBF::payloadRxDone()
 			status.mean_accuracy = (_buf.payload_pvt_geodetic.h_accuracy + _buf.payload_pvt_geodetic.v_accuracy) / 20; // Todos: formula need approval, 0.01m
 			status.flags = (_buf.payload_pvt_geodetic.mode_type > 0 ? 1 : 0) | (_survey_active & 1) << 1; 
 			surveyInStatus(status);
+			ret |= 4; // RTCM infos have been updated
 		}
 
 		//SBF_DEBUG("PVTGeodetic handled");
