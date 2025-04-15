@@ -226,21 +226,47 @@ int GPSDriverSBF::configure(unsigned &baudrate, const GPSConfig &config)
 		_rtcm_parsing->reset();
 	}
 
+	SBF_DEBUG("Configure for protocol: %d", _base_settings.protocol);
+	switch(_base_settings.protocol){
+		case ProtocolType::CMR:
+			sendMessageAndWaitForAck(SBF_CONFIG_OUTPUT_CMR, SBF_CONFIG_TIMEOUT);
+			break;
+
+		case ProtocolType::RTCMv2:
+			sendMessageAndWaitForAck(SBF_CONFIG_OUTPUT_RTCM2, SBF_CONFIG_TIMEOUT);
+			break;
+		
+		case ProtocolType::RTCMv3:
+		default:
+			sendMessageAndWaitForAck(SBF_CONFIG_OUTPUT_RTCM3, SBF_CONFIG_TIMEOUT);
+			break;
+	}
+	
 	if (_output_mode == OutputMode::RTCM) {
-		if (_base_settings.type == BaseSettingsType::fixed_position) {
+		switch(_base_settings.type){
+		case(BaseSettingsType::fixed_position):
 			snprintf(msg, sizeof(msg), SBF_CONFIG_RTCM_STATIC_COORDINATES,
-				 _base_settings.settings.fixed_position.latitude,
-				 _base_settings.settings.fixed_position.longitude,
-				 static_cast<double>(_base_settings.settings.fixed_position.altitude));
+				_base_settings.settings.fixed_position.latitude,
+				_base_settings.settings.fixed_position.longitude,
+				static_cast<double>(_base_settings.settings.fixed_position.altitude));
 			sendMessageAndWaitForAck(msg, SBF_CONFIG_TIMEOUT);
+			
 			snprintf(msg, sizeof(msg), SBF_CONFIG_RTCM_STATIC_OFFSET, 0.0, 0.0, 0.0);
 			sendMessageAndWaitForAck(msg, SBF_CONFIG_TIMEOUT);
+			
 			sendMessageAndWaitForAck(SBF_CONFIG_RTCM_STATIC1, SBF_CONFIG_TIMEOUT);
 			sendMessageAndWaitForAck(SBF_CONFIG_RTCM_STATIC2, SBF_CONFIG_TIMEOUT);
+			break;
 
-		} else {
-			sendMessageAndWaitForAck(SBF_CONFIG_RTCM, SBF_CONFIG_TIMEOUT);
+		case(BaseSettingsType::survey_in):
+		default:
+			sendMessageAndWaitForAck(SBF_CONFIG_RTCM_SURVEY_IN, SBF_CONFIG_TIMEOUT);
+			break;
 		}
+	
+		sendMessageAndWaitForAck(SBF_CONFIG_RTCM_STATUS, SBF_CONFIG_TIMEOUT);	
+		_survey_active = true;
+		_survey_activation_date = gps_absolute_time();
 	}
 
 	_configured = true;
@@ -258,7 +284,7 @@ bool GPSDriverSBF::sendMessage(const char *msg)
 
 bool GPSDriverSBF::sendMessageAndWaitForAck(const char *msg, const int timeout)
 {
-	SBF_DEBUG("Send MSG: %s", msg);
+	SBF_INFO("Send MSG: %s", msg);
 
 	// Send message
 	int length = static_cast<int>(strlen(msg));
@@ -344,12 +370,13 @@ int GPSDriverSBF::receive(unsigned timeout)
 		}
 
 		if (handled > 0) {
+			SBF_INFO("Handled : %i", handled);
 			return handled;
 		}
 
 		// abort after timeout if no useful packets received
 		if (time_started + timeout * 1000 < gps_absolute_time()) {
-			SBF_DEBUG("timed out, returning");
+			SBF_DEBUG("timed out after %d ms, returning", timeout);
 			return -1;
 		}
 	}
@@ -599,6 +626,21 @@ int GPSDriverSBF::payloadRxDone()
 		_rate_count_vel++;
 		_rate_count_lat_lon++;
 		ret |= (_msg_status == 7) ? 1 : 0;
+
+
+		// In RTCM mode, PVTGeodetic is used to get base station survey-in
+		if(_output_mode == OutputMode::RTCM){
+			SurveyInStatus status{};
+			status.latitude = _gps_position->latitude_deg;
+			status.longitude = _gps_position->longitude_deg;
+			status.altitude = _gps_position->altitude_ellipsoid_m; // Todo: Need check if this value use the WGS84 format.
+			status.duration = _survey_active ? (float)(gps_absolute_time() - _survey_activation_date) / 1000000.0f : 0;
+			status.mean_accuracy = (_buf.payload_pvt_geodetic.h_accuracy + _buf.payload_pvt_geodetic.v_accuracy) / 20; // Todos: formula need approval, 0.01m
+			status.flags = (_buf.payload_pvt_geodetic.mode_type > 0 ? 1 : 0) | (_survey_active & 1) << 1; 
+			surveyInStatus(status);
+			qDebug() << "Sending survey";
+		}
+
 		//SBF_DEBUG("PVTGeodetic handled");
 		break;
 
