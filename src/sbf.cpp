@@ -57,11 +57,11 @@
 /**** Trace macros, disable for production builds */
 #define SBF_TRACE_PARSER(...)   {/*GPS_INFO(__VA_ARGS__);*/}    /* decoding progress in parse_char() */
 #define SBF_TRACE_RXMSG(...)    {/*GPS_INFO(__VA_ARGS__);*/}    /* Rx msgs in payload_rx_done() */
-#define SBF_INFO(...)           {/*GPS_INFO(__VA_ARGS__);*/}
+#define SBF_INFO(...)           {GPS_INFO(__VA_ARGS__);}
 
 /**** Warning macros, disable to save memory */
 #define SBF_WARN(...)        {GPS_WARN(__VA_ARGS__);}
-#define SBF_DEBUG(...)       {/*GPS_WARN(__VA_ARGS__);*/}
+#define SBF_DEBUG(...)       {GPS_WARN(__VA_ARGS__);}
 
 GPSDriverSBF::GPSDriverSBF(GPSCallbackPtr callback, void *callback_user, struct sensor_gps_s *gps_position,
 			   satellite_info_s *satellite_info, float heading_offset, float pitch_offset)
@@ -275,7 +275,7 @@ int GPSDriverSBF::configure(unsigned &baudrate, const GPSConfig &config)
 bool GPSDriverSBF::sendMessage(const char *msg)
 {
 	// Send message
-	SBF_DEBUG("Ho Send MSG: %s", msg);
+	SBF_DEBUG("Send MSG: %s", msg);
 	int length = static_cast<int>(strlen(msg));
 
 	return (write(msg, length) == length);
@@ -283,7 +283,7 @@ bool GPSDriverSBF::sendMessage(const char *msg)
 
 bool GPSDriverSBF::sendMessageAndWaitForAck(const char *msg, const int timeout)
 {
-	SBF_INFO("Ho Send MSG: %s", msg);
+	SBF_INFO("Send MSG: %s", msg);
 
 	// Send message
 	int length = static_cast<int>(strlen(msg));
