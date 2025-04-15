@@ -57,7 +57,7 @@
 /**** Trace macros, disable for production builds */
 #define SBF_TRACE_PARSER(...)   {/*GPS_INFO(__VA_ARGS__);*/}    /* decoding progress in parse_char() */
 #define SBF_TRACE_RXMSG(...)    {/*GPS_INFO(__VA_ARGS__);*/}    /* Rx msgs in payload_rx_done() */
-#define SBF_INFO(...)           {GPS_INFO(__VA_ARGS__);}
+#define SBF_INFO(...)           {/*GPS_INFO(__VA_ARGS__);*/}
 
 /**** Warning macros, disable to save memory */
 #define SBF_WARN(...)        {GPS_WARN(__VA_ARGS__);}
@@ -386,6 +386,7 @@ int GPSDriverSBF::receive(unsigned timeout)
 // 0b0000_0000 = still decoding
 // 0b0000_0001 = message handled
 // 0b0000_0010 = sat info message handled
+// 0b0000_0100 = RTCM handled
 int GPSDriverSBF::parseChar(const uint8_t b)
 {
 	int ret = 0;
@@ -396,7 +397,7 @@ int GPSDriverSBF::parseChar(const uint8_t b)
 			gotRTCMMessage(_rtcm_parsing->message(), _rtcm_parsing->messageLength());
 			decodeInit();
 			_rtcm_parsing->reset();
-			return ret;
+			return 0b0100; // ret
 		}
 	}
 
@@ -638,7 +639,6 @@ int GPSDriverSBF::payloadRxDone()
 			status.mean_accuracy = (_buf.payload_pvt_geodetic.h_accuracy + _buf.payload_pvt_geodetic.v_accuracy) / 20; // Todos: formula need approval, 0.01m
 			status.flags = (_buf.payload_pvt_geodetic.mode_type > 0 ? 1 : 0) | (_survey_active & 1) << 1; 
 			surveyInStatus(status);
-			qDebug() << "Sending survey";
 		}
 
 		//SBF_DEBUG("PVTGeodetic handled");
