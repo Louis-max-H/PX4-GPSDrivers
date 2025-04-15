@@ -73,6 +73,7 @@ public:
 		default:
 			_base_settings.protocol = ProtocolType::RTCMv3;
 			break;
+		}
 	}
 
 	/**
