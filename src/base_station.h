@@ -55,28 +55,6 @@ public:
 	virtual ~GPSBaseStationSupport() = default;
 
 	/**
-	 * set general RTK base station configuration.
-	 * @param  protocol (0:RTCMv3, 1:RTCMv2, 2:CMR)
-	 */
-	void setBaseGeneralConfig(uint8_t protocol)
-	{
-		switch(protocol){
-		case 0:
-			_base_settings.protocol = ProtocolType::RTCMv3;
-			break;
-		case 1:
-			_base_settings.protocol = ProtocolType::RTCMv2;
-			break;
-		case 2:
-			_base_settings.protocol = ProtocolType::CMR;
-			break;
-		default:
-			_base_settings.protocol = ProtocolType::RTCMv3;
-			break;
-		}
-	}
-
-	/**
 	 * set survey-in specs for RTK base station setup (for finding an accurate base station position
 	 * by averaging the position measurements over time).
 	 * @param survey_in_acc_limit minimum accuracy in 0.1mm
@@ -112,11 +90,6 @@ protected:
 		survey_in,
 		fixed_position
 	};
-	enum class ProtocolType : uint8_t {
-		RTCMv3,
-		RTCMv2,
-		CMR
-	};
 	struct SurveyInSettings {
 		uint32_t acc_limit;
 		uint32_t min_dur;
@@ -129,7 +102,6 @@ protected:
 	};
 	struct BaseSettings {
 		BaseSettingsType type;
-		ProtocolType protocol;
 		union {
 			SurveyInSettings survey_in;
 			FixedPositionSettings fixed_position;

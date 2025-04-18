@@ -55,8 +55,8 @@
 #define MSG_SIZE                    100 // size of the message to be sent to the receiver.
 
 /**** Trace macros, disable for production builds */
-#define SBF_TRACE_PARSER(...)   {/*GPS_INFO(__VA_ARGS__);*/}    /* decoding progress in parse_char() */
-#define SBF_TRACE_RXMSG(...)    {/*GPS_INFO(__VA_ARGS__);*/}    /* Rx msgs in payload_rx_done() */
+#define SBF_TRACE_PARSER(...)   {GPS_INFO(__VA_ARGS__);}    /* decoding progress in parse_char() */
+#define SBF_TRACE_RXMSG(...)    {GPS_INFO(__VA_ARGS__);}    /* Rx msgs in payload_rx_done() */
 #define SBF_INFO(...)           {GPS_INFO(__VA_ARGS__);}
 
 /**** Warning macros, disable to save memory */
@@ -226,20 +226,7 @@ int GPSDriverSBF::configure(unsigned &baudrate, const GPSConfig &config)
 		_rtcm_parsing->reset();
 	}
 
-	switch(_base_settings.protocol){
-		case ProtocolType::CMR:
-			sendMessageAndWaitForAck(SBF_CONFIG_OUTPUT_CMR, SBF_CONFIG_TIMEOUT);
-			break;
-
-		case ProtocolType::RTCMv2:
-			sendMessageAndWaitForAck(SBF_CONFIG_OUTPUT_RTCM2, SBF_CONFIG_TIMEOUT);
-			break;
-		
-		case ProtocolType::RTCMv3:
-		default:
-			sendMessageAndWaitForAck(SBF_CONFIG_OUTPUT_RTCM3, SBF_CONFIG_TIMEOUT);
-			break;
-	}
+	sendMessageAndWaitForAck(SBF_CONFIG_OUTPUT_RTCM3, SBF_CONFIG_TIMEOUT);
 	
 	if (_output_mode == OutputMode::RTCM) {
 		switch(_base_settings.type){
@@ -427,7 +414,7 @@ int GPSDriverSBF::parseChar(const uint8_t b)
 		break;
 
 	// Expecting payload
-	case SBF_DECODE_PAYLOAD: SBF_TRACE_PARSER(".");
+	case SBF_DECODE_PAYLOAD: // SBF_TRACE_PARSER(".");
 
 		ret = payloadRxAdd(b); // add a payload byte
 
@@ -509,6 +496,7 @@ int GPSDriverSBF::payloadRxDone()
 	if (_buf.length <= 4 ||
 	    _buf.length > _rx_payload_index ||
 	    _buf.crc16 != crc16(reinterpret_cast<uint8_t *>(&_buf) + 4, _buf.length - 4)) {
+		SBF_TRACE_RXMSG("Rx Unknow");
 		return 0;
 	}
 
@@ -634,9 +622,9 @@ int GPSDriverSBF::payloadRxDone()
 			SurveyInStatus status{};
 			status.latitude = _gps_position->latitude_deg;
 			status.longitude = _gps_position->longitude_deg;
-			status.altitude = _gps_position->altitude_ellipsoid_m; // Todo: Need check if this value use the WGS84 format.
+			status.altitude = _gps_position->altitude_ellipsoid_m;
 			status.duration = _survey_active ? (float)(gps_absolute_time() - _survey_activation_date) / 1000000.0f : 0;
-			status.mean_accuracy = (_buf.payload_pvt_geodetic.h_accuracy + _buf.payload_pvt_geodetic.v_accuracy) / 20; // Todos: formula need approval, 0.01m
+			status.mean_accuracy = (_buf.payload_pvt_geodetic.h_accuracy + _buf.payload_pvt_geodetic.v_accuracy) / 20; // Value in mm
 			status.flags = (_buf.payload_pvt_geodetic.mode_type > 0 ? 1 : 0) | (_survey_active & 1) << 1; 
 			surveyInStatus(status);
 			ret |= 4; // RTCM infos have been updated
@@ -725,6 +713,7 @@ int GPSDriverSBF::payloadRxDone()
 		break;
 
 	default:
+		SBF_TRACE_RXMSG("Rx other.");
 		break;
 	}
 
