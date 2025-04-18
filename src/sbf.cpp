@@ -55,13 +55,13 @@
 #define MSG_SIZE                    100 // size of the message to be sent to the receiver.
 
 /**** Trace macros, disable for production builds */
-#define SBF_TRACE_PARSER(...)   {GPS_INFO(__VA_ARGS__);}    /* decoding progress in parse_char() */
-#define SBF_TRACE_RXMSG(...)    {GPS_INFO(__VA_ARGS__);}    /* Rx msgs in payload_rx_done() */
-#define SBF_INFO(...)           {GPS_INFO(__VA_ARGS__);}
+#define SBF_TRACE_PARSER(...)   {/*GPS_INFO(__VA_ARGS__);*/}    /* decoding progress in parse_char() */
+#define SBF_TRACE_RXMSG(...)    {/*GPS_INFO(__VA_ARGS__);*/}    /* Rx msgs in payload_rx_done() */
+#define SBF_INFO(...)           {/*GPS_INFO(__VA_ARGS__);*/}
 
 /**** Warning macros, disable to save memory */
-#define SBF_WARN(...)        {GPS_WARN(__VA_ARGS__);}
-#define SBF_DEBUG(...)       {GPS_WARN(__VA_ARGS__);}
+#define SBF_WARN(...)        {/*GPS_WARN(__VA_ARGS__);*/}
+#define SBF_DEBUG(...)       {/*GPS_WARN(__VA_ARGS__);*/}
 
 GPSDriverSBF::GPSDriverSBF(GPSCallbackPtr callback, void *callback_user, struct sensor_gps_s *gps_position,
 			   satellite_info_s *satellite_info, float heading_offset, float pitch_offset)
@@ -414,7 +414,7 @@ int GPSDriverSBF::parseChar(const uint8_t b)
 		break;
 
 	// Expecting payload
-	case SBF_DECODE_PAYLOAD: // SBF_TRACE_PARSER(".");
+	case SBF_DECODE_PAYLOAD: SBF_TRACE_PARSER(".");
 
 		ret = payloadRxAdd(b); // add a payload byte
 
